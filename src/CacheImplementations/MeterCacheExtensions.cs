@@ -2,31 +2,33 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using System.Diagnostics.Metrics;
 
 namespace CacheImplementations;
 
 public static class MeterCacheExtensions
 {
-    public static IServiceCollection AddMemoryCacheViaDecorator(this IServiceCollection services, Action<MemoryCacheOptions2>? configure = null)
+    // NOTE: In both cases we would have both a regular and a keyed registration; just doing the keyed since it's the more complex case.
+
+
+    public static IServiceCollection AddKeyedMemoryCacheViaDecorator(this IServiceCollection services, string? name = null, Action<MemoryCacheOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         configure ??= (_ => { });
+        name ??= Options.DefaultName;
 
         services.AddOptions();
 
         services.Configure(configure);
-        services.ReMapMemoryCacheOptions();
 
-        services.TryAdd(ServiceDescriptor.Singleton<IMemoryCache, MemoryCache>());
-
-        services.TryAddSingleton<IMemoryCache>(sp =>
+        services.TryAddKeyedSingleton<IMemoryCache>(name, (sp, key) =>
         {
-            var options = sp.GetRequiredService<IOptions<MemoryCacheOptions2>>();
+            var options = sp.GetRequiredService<IOptions<MemoryCacheOptions>>();
             var inner = ActivatorUtilities.GetServiceOrCreateInstance<MemoryCache>(sp);
 
             if (options.Value.TrackStatistics)
             {
-                var meter = new System.Diagnostics.Metrics.Meter(options.Value.Name);
+                var meter = new Meter(name);
                 return new MeteredMemoryCache(inner, meter, disposeInner: true);
             }
 
@@ -36,48 +38,28 @@ public static class MeterCacheExtensions
         return services;
     }
 
-    public static IServiceCollection AddMemoryCacheViaObserver(this IServiceCollection services, Action<MemoryCacheOptions2>? configure = null)
+    public static IServiceCollection AddKeyedMemoryCacheViaObserver(this IServiceCollection services, string? name = null, Action<MemoryCacheOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         configure ??= (_ => { });
+        name ??= Options.DefaultName;
 
         services.AddOptions();
         services.Configure(configure);
-        services.ReMapMemoryCacheOptions();
 
-        services.TryAddSingleton<IMemoryCache>(sp =>
+        services.TryAddKeyedSingleton<IMemoryCache>(name, (sp, key) =>
         {
-            var options = sp.GetRequiredService<IOptions<MemoryCacheOptions2>>();
+            var options = sp.GetRequiredService<IOptions<MemoryCacheOptions>>();
 
             var inner = ActivatorUtilities.GetServiceOrCreateInstance<MemoryCache>(sp);
 
             if (options.Value.TrackStatistics)
             {
                 // Force the observer to start
-                _ = new MemoryCacheObserver(inner, options.Value.Name);
+                _ = new MemoryCacheObserver(inner, name);
             }
 
             return inner;
-        });
-
-        return services;
-    }
-
-    private static IServiceCollection ReMapMemoryCacheOptions(this IServiceCollection services)
-    {
-        // Don't look here. This is just because we've subclassed MemoryCacheOptions in the example.
-        services.AddSingleton<IPostConfigureOptions<MemoryCacheOptions>>(sp =>
-        {
-            return new PostConfigureOptions<MemoryCacheOptions>(Options.DefaultName, baseOptions =>
-            {
-                var derived = sp.GetRequiredService<IOptions<MemoryCacheOptions2>>().Value;
-
-                baseOptions.SizeLimit = derived.SizeLimit;
-                baseOptions.CompactionPercentage = derived.CompactionPercentage;
-                baseOptions.ExpirationScanFrequency = derived.ExpirationScanFrequency;
-                baseOptions.TrackStatistics = derived.TrackStatistics;
-                baseOptions.TrackLinkedCacheEntries = derived.TrackLinkedCacheEntries;
-            });
         });
 
         return services;
