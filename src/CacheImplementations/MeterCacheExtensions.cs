@@ -14,8 +14,8 @@ public static class MeterCacheExtensions
 
         services.AddOptions();
 
-        services.Configure(configure); // What to do here; Name should go on Options so it isn't a breaking change, but then how do we do named options, which requires the name up front?
-        services.Configure<MemoryCacheOptions>((o) => o.TrackStatistics = true); // This is just for testing, would come from the outer configure
+        services.Configure(configure);
+        services.ReMapMemoryCacheOptions();
 
         services.TryAdd(ServiceDescriptor.Singleton<IMemoryCache, MemoryCache>());
 
@@ -42,8 +42,8 @@ public static class MeterCacheExtensions
         configure ??= (_ => { });
 
         services.AddOptions();
-        services.Configure(configure); // What to do here; Name should go on Options so it isn't a breaking change, but then how do we do named options, which requires the name up front?
-        services.Configure<MemoryCacheOptions>((o) => o.TrackStatistics = true); // This is just for testing, would come from the outer configure
+        services.Configure(configure);
+        services.ReMapMemoryCacheOptions();
 
         services.TryAddSingleton<IMemoryCache>(sp =>
         {
@@ -58,6 +58,26 @@ public static class MeterCacheExtensions
             }
 
             return inner;
+        });
+
+        return services;
+    }
+
+    private static IServiceCollection ReMapMemoryCacheOptions(this IServiceCollection services)
+    {
+        // Don't look here. This is just because we've subclassed MemoryCacheOptions in the example.
+        services.AddSingleton<IPostConfigureOptions<MemoryCacheOptions>>(sp =>
+        {
+            return new PostConfigureOptions<MemoryCacheOptions>(Options.DefaultName, baseOptions =>
+            {
+                var derived = sp.GetRequiredService<IOptions<MemoryCacheOptions2>>().Value;
+
+                baseOptions.SizeLimit = derived.SizeLimit;
+                baseOptions.CompactionPercentage = derived.CompactionPercentage;
+                baseOptions.ExpirationScanFrequency = derived.ExpirationScanFrequency;
+                baseOptions.TrackStatistics = derived.TrackStatistics;
+                baseOptions.TrackLinkedCacheEntries = derived.TrackLinkedCacheEntries;
+            });
         });
 
         return services;
