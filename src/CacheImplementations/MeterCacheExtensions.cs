@@ -19,14 +19,14 @@ public static class MeterCacheExtensions
 
         services.AddOptions();
 
-        services.Configure(configure);
+        services.Configure(name, configure);
 
         services.TryAddKeyedSingleton<IMemoryCache>(name, (sp, key) =>
         {
-            var options = sp.GetRequiredService<IOptions<MemoryCacheOptions>>();
+            var options = sp.GetRequiredService<IOptionsMonitor<MemoryCacheOptions>>().Get(name);
             var inner = ActivatorUtilities.GetServiceOrCreateInstance<MemoryCache>(sp);
 
-            if (options.Value.TrackStatistics)
+            if (options.TrackStatistics)
             {
                 var meter = new Meter(name);
                 return new MeteredMemoryCache(inner, meter, disposeInner: true);
@@ -45,15 +45,15 @@ public static class MeterCacheExtensions
         name ??= Options.DefaultName;
 
         services.AddOptions();
-        services.Configure(configure);
+        services.Configure(name, configure);
 
         services.TryAddKeyedSingleton<IMemoryCache>(name, (sp, key) =>
         {
-            var options = sp.GetRequiredService<IOptions<MemoryCacheOptions>>();
+            var options = sp.GetRequiredService<IOptionsMonitor<MemoryCacheOptions>>().Get(name);
 
             var inner = ActivatorUtilities.GetServiceOrCreateInstance<MemoryCache>(sp);
 
-            if (options.Value.TrackStatistics)
+            if (options.TrackStatistics)
             {
                 // Force the observer to start
                 _ = new MemoryCacheObserver(inner, name);
